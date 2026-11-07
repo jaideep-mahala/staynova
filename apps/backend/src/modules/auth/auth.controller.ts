@@ -1,0 +1,78 @@
+import { Request, Response } from "express";
+import { z } from "zod";
+import {
+  signup,
+  login,
+  refreshTokens,
+  verifyEmail,
+  forgotPassword,
+  resetPassword,
+  logout,
+  logoutAll,
+} from "./auth.service";
+import { asyncHandler } from "../../middlewares/error-handler/errorHandler";
+
+const signupSchema = z.object({
+  name: z.string().min(2),
+  email: z.string().email(),
+  password: z.string().min(8),
+  phone: z.string().optional(),
+  role: z.enum(["USER", "OWNER"]).optional(),
+});
+
+const loginSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(1),
+});
+
+export const signupHandler = asyncHandler(async (req: Request, res: Response) => {
+  const data = signupSchema.parse(req.body);
+  const result = await signup(data);
+  res.status(201).json({ success: true, data: result });
+});
+
+export const loginHandler = asyncHandler(async (req: Request, res: Response) => {
+  const data = loginSchema.parse(req.body);
+  const result = await login({
+    ...data,
+    userAgent: req.headers["user-agent"],
+    ip: req.ip,
+  });
+  res.json({ success: true, data: result });
+});
+
+export const refreshHandler = asyncHandler(async (req: Request, res: Response) => {
+  const { refreshToken } = z.object({ refreshToken: z.string() }).parse(req.body);
+  const result = await refreshTokens(refreshToken);
+  res.json({ success: true, data: result });
+});
+
+export const verifyEmailHandler = asyncHandler(async (req: Request, res: Response) => {
+  const { token } = z.object({ token: z.string() }).parse(req.query);
+  const result = await verifyEmail(token);
+  res.json({ success: true, data: result });
+});
+
+export const forgotPasswordHandler = asyncHandler(async (req: Request, res: Response) => {
+  const { email } = z.object({ email: z.string().email() }).parse(req.body);
+  await forgotPassword(email);
+  res.json({ success: true, data: { message: "If email exists, reset link sent" } });
+});
+
+export const resetPasswordHandler = asyncHandler(async (req: Request, res: Response) => {
+  const data = z.object({ token: z.string(), newPassword: z.string().min(8) }).parse(req.body);
+  await resetPassword(data.token, data.newPassword);
+  res.json({ success: true, data: { message: "Password reset successful" } });
+});
+
+export const logoutHandler = asyncHandler(async (req: Request, res: Response) => {
+  const { refreshToken } = z.object({ refreshToken: z.string() }).parse(req.body);
+  await logout(refreshToken);
+  res.json({ success: true, data: { message: "Logged out" } });
+});
+
+export const logoutAllHandler = asyncHandler(async (req: Request, res: Response) => {
+  const userId = (req as any).user?.userId;
+  await logoutAll(userId);
+  res.json({ success: true, data: { message: "Logged out from all devices" } });
+});
