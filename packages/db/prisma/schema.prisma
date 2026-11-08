@@ -147,6 +147,7 @@ model User {
   notifications      Notification[]
   couponRedemptions  CouponRedemption[]
   auditLogs          AuditLog[]
+  supportTickets     SupportTicket[]
 
   @@index([email])
   @@index([role])
@@ -210,11 +211,22 @@ model Property {
   longitude            Decimal?           @db.Decimal(11, 8)
   cancellationPolicy   CancellationPolicy @default(FLEXIBLE)
   status               PropertyStatus     @default(PENDING)
+  rejectionReason      String?
+  avgRating            Float?
+  reviewCount          Int                @default(0)
+  minPricePaise        Int? // denormalised for fast sort
+  houseRules           String?
+  gstNumber            String?
+  checkInTime          String             @default("14:00")
+  checkOutTime         String             @default("11:00")
+  phone                String?
+  email                String?
   isClosed             Boolean            @default(false)
   minOccupancy         Int?               @default(2) // base occupancy per room
   extraAdultPricePaise Int?               @default(0)
   extraChildPricePaise Int?               @default(0)
   sameDayCutoffHour    Int?               @default(18) // 6 PM IST
+  deletedAt            DateTime?
 
   rooms     RoomType[]
   inventory Inventory[]
@@ -234,28 +246,55 @@ model Property {
 }
 
 model RoomType {
-  id             String   @id @default(uuid()) @db.Uuid
-  property       Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
-  propertyId     String   @db.Uuid
-  name           String
-  description    String?
-  basePricePaise Int // per night, base currency paise
-  totalRooms     Int // physical rooms of this type
-  maxAdults      Int      @default(2)
-  maxChildren    Int      @default(2)
-  maxOccupancy   Int      @default(4)
-  baseOccupancy  Int      @default(2) // included adults per room
-  sizeSqFt       Int?
-  bedType        String?
-  amenities      String? // comma separated or JSON
-  isActive       Boolean  @default(true)
+  id                   String   @id @default(uuid()) @db.Uuid
+  property             Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  propertyId           String   @db.Uuid
+  name                 String
+  description          String?
+  basePricePaise       Int // per night, base currency paise
+  totalRooms           Int // physical rooms of this type
+  maxAdults            Int      @default(2)
+  maxChildren          Int      @default(2)
+  maxOccupancy         Int      @default(4)
+  baseOccupancy        Int      @default(2) // included adults per room
+  extraAdultPricePaise Int      @default(0)
+  extraChildPricePaise Int      @default(0)
+  refundable           Boolean  @default(true)
+  breakfastIncluded    Boolean  @default(false)
+  sizeSqFt             Int?
+  bedType              String?
+  bedCount             Int?
+  amenities            String? // comma separated or JSON
+  isActive             Boolean  @default(true)
 
   inventory    Inventory[]
   rateRules    RateRule[]
   bookingItems BookingItem[]
+  images       RoomTypeImage[]
+  amenityLinks RoomTypeAmenity[]
 
   @@index([propertyId])
   @@index([isActive])
+}
+
+model RoomTypeImage {
+  id         String   @id @default(uuid()) @db.Uuid
+  roomType   RoomType @relation(fields: [roomTypeId], references: [id], onDelete: Cascade)
+  roomTypeId String   @db.Uuid
+  url        String
+  sortOrder  Int      @default(0)
+
+  @@index([roomTypeId])
+}
+
+model RoomTypeAmenity {
+  id         String   @id @default(uuid()) @db.Uuid
+  roomType   RoomType @relation(fields: [roomTypeId], references: [id], onDelete: Cascade)
+  roomTypeId String   @db.Uuid
+  amenity    String
+
+  @@index([roomTypeId])
+  @@index([amenity])
 }
 
 model Inventory {
@@ -329,6 +368,7 @@ model Booking {
   cancelledBy                String? // userId or "owner"/"admin"
   cancellationReason         String?
   refundAmountPaise          Int           @default(0)
+  voucherUrl                 String?
   idempotencyKey             String?       @unique
 
   bookingItems      BookingItem[]
@@ -412,8 +452,8 @@ model Refund {
 
 model Coupon {
   id                    String     @id @default(uuid()) @db.Uuid
-  property              Property   @relation(fields: [propertyId], references: [id], onDelete: Cascade)
-  propertyId            String     @db.Uuid
+  property              Property?  @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  propertyId            String?    @db.Uuid
   code                  String     @unique
   description           String?
   type                  CouponType
@@ -514,6 +554,21 @@ model AuditLog {
 
   @@index([actorId])
   @@index([entity, entityId])
+}
+
+model SupportTicket {
+  id        String   @id @default(uuid()) @db.Uuid
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  userId    String?  @db.Uuid
+  email     String?
+  subject   String
+  message   String
+  status    String   @default("OPEN")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([status])
 }
 
 model PropertyImage {

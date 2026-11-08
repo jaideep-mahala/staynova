@@ -5,11 +5,13 @@ import { logger } from "../../lib/logger";
 export class AppError extends Error {
   public statusCode: number;
   public isOperational: boolean;
+  public details?: unknown;
 
-  constructor(message: string, statusCode: number) {
+  constructor(message: string, statusCode: number, details?: unknown) {
     super(message);
     this.statusCode = statusCode;
     this.isOperational = true;
+    this.details = details;
     Error.captureStackTrace(this, this.constructor);
   }
 }
@@ -63,6 +65,7 @@ export const errorHandler = (
       error: {
         code: err.message,
         message: err.message,
+        details: err.details as never,
       },
     };
   }
