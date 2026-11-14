@@ -42,6 +42,7 @@ async function main() {
   });
 
   // Owners
+  const ownerHash = await bcrypt.hash("Owner@123", 12);
   const owners = await Promise.all(
     ["owner1@staynova.com", "owner2@staynova.com"].map((email, i) =>
       prisma.user.upsert({
@@ -50,7 +51,7 @@ async function main() {
         create: {
           name: `Property Owner ${i + 1}`,
           email,
-          passwordHash: await bcrypt.hash("Owner@123", 12),
+          passwordHash: ownerHash,
           role: "OWNER",
           status: "ACTIVE",
           emailVerifiedAt: new Date(),
@@ -60,6 +61,7 @@ async function main() {
   );
 
   // Users (guests)
+  const guestHash = await bcrypt.hash("Guest@123", 12);
   const users = await Promise.all(
     ["guest1@staynova.com", "guest2@staynova.com"].map((email, i) =>
       prisma.user.upsert({
@@ -68,7 +70,7 @@ async function main() {
         create: {
           name: `Guest ${i + 1}`,
           email,
-          passwordHash: await bcrypt.hash("Guest@123", 12),
+          passwordHash: guestHash,
           role: "USER",
           status: "ACTIVE",
           emailVerifiedAt: new Date(),
@@ -139,23 +141,23 @@ async function main() {
         },
       });
 
-      // Inventory for 365 days ahead
+      // Inventory for 365 days ahead (bulk insert for speed)
+      const inventoryRows = [];
       for (let d = 0; d < 365; d++) {
         const date = new Date(baseDate);
         date.setUTCDate(date.getUTCDate() + d);
-        await prisma.inventory.create({
-          data: {
-            roomTypeId: roomType.id,
-            date,
-            totalRooms: roomType.totalRooms,
-            bookedRooms: 0,
-            heldRooms: 0,
-            pricePaise: basePrice + j * 200000,
-            isClosed: false,
-            minStayNights: 1,
-          },
+        inventoryRows.push({
+          roomTypeId: roomType.id,
+          date,
+          totalRooms: roomType.totalRooms,
+          bookedRooms: 0,
+          heldRooms: 0,
+          pricePaise: basePrice + j * 200000,
+          isClosed: false,
+          minStayNights: 1,
         });
       }
+      await prisma.inventory.createMany({ data: inventoryRows, skipDuplicates: true });
 
       // Rate rules
       await prisma.rateRule.create({
@@ -185,29 +187,33 @@ async function main() {
         })
       )
     );
+  }
 
-    // Coupons (per property)
-    for (const c of COUPONS) {
-      await prisma.coupon.create({
-        data: {
-          propertyId: property.id,
-          code: `${c.code}${i + 1}`,
+  // Global coupons (spec §6 seed: WELCOME10, FLAT500, SUMMER15) + per-property variants
+  await Promise.all(
+    COUPONS.map((c) =>
+      prisma.coupon.upsert({
+        where: { code: c.code },
+        update: { active: true },
+        create: {
+          propertyId: null, // platform-wide coupon
+          code: c.code,
           description: c.description,
           type: c.type,
           value: c.value,
-          maxDiscountPaise: c.maxDiscountPaise,
+          maxDiscountPaise: c.maxDiscountPaise ?? null,
           minBookingPaise: c.minBookingPaise,
           validFrom: now,
           validTo: new Date(now.getFullYear() + 1, now.getMonth(), now.getDate()),
-          usageLimit: 1000,
-          perUserLimit: 1,
+          usageLimit: 10000,
+          perUserLimit: 5,
           usedCount: 0,
-          applicablePropertyIds: [property.id],
+          applicablePropertyIds: [], // all properties
           active: true,
         },
-      });
-    }
-  }
+      })
+    )
+  );
 
   console.log("✅ Seed complete");
 }

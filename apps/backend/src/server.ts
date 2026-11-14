@@ -10,6 +10,12 @@ const startServer = async () => {
     await prisma.$queryRaw`SELECT 1`;
     logger.info("Database connected");
 
+    // start BullMQ workers + cron schedulers unless explicitly disabled
+    if (process.env.DISABLE_WORKERS !== "true") {
+      const { startAllJobs } = await import("./jobs");
+      await startAllJobs().catch((e) => logger.warn({ err: e }, "jobs failed to start (redis down?)"));
+    }
+
     app.listen(PORT, () => {
       logger.info(`StayNova API running on http://localhost:${PORT}`);
       logger.info(`Environment: ${process.env.NODE_ENV || "development"}`);

@@ -65,11 +65,23 @@ export function nightsBetween(checkIn: Date, checkOut: Date): number {
   return Math.round((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24));
 }
 
+/** YYYY-MM-DD key in property-local time (IST) — independent of host TZ. */
 function toDateOnly(d: Date): string {
-  const y = d.getFullYear();
-  const m = `${d.getMonth() + 1}`.padStart(2, "0");
-  const day = `${d.getDate()}`.padStart(2, "0");
-  return `${y}-${m}-${day}`;
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(d);
+}
+
+function dateKeyOf(v: string | Date): string {
+  if (v instanceof Date) return toDateOnly(v);
+  return String(v).slice(0, 10);
+}
+
+function dayDiff(a: string, b: string): number {
+  return Math.round((Date.parse(`${a}T12:00:00Z`) - Date.parse(`${b}T12:00:00Z`)) / 86400000);
 }
 
 /**
@@ -93,32 +105,37 @@ export function computeNightlyPrices(input: {
   rateRules?: RateRuleInput[];
 }): NightBreakdown[] {
   const { basePricePaise, roomsCount, today, checkIn, inventoryByDate = new Map(), rateRules = [] } = input;  const activeRules = rateRules.filter((r) => r.active).sort((a, b) => a.priority - b.priority);
-  const daysUntil = Math.floor((new Date(checkIn).getTime() - new Date(today).getTime()) / (1000 * 60 * 60 * 24));
+  const todayKey = toDateOnly(today);
+  const checkInKey = toDateOnly(checkIn);
+  const daysUntil = dayDiff(checkInKey, todayKey);
   const totalNights = input.nights;
 
-  const ruleApplies = (rule: RateRuleInput, date: Date): boolean => {
+  const ruleApplies = (rule: RateRuleInput, key: string): boolean => {
     switch (rule.type) {
       case "WEEKEND": {
         const days = rule.daysOfWeek.length ? rule.daysOfWeek : [5, 6];
-        return days.includes(date.getDay());
+        // daysOfWeek is ISO 1=Mon..7=Sun (schema comment); map JS getUTCDay 0→7
+        return days.includes(new Date(`${key}T12:00:00Z`).getUTCDay() || 7);
       }
       case "SEASONAL": {
         if (!rule.startDate || !rule.endDate) return false;
-        return date >= new Date(rule.startDate) && date <= new Date(rule.endDate);
+        return key >= dateKeyOf(rule.startDate) && key <= dateKeyOf(rule.endDate);
       }
       case "LAST_MINUTE": {
-        const min = rule.startDate ? Math.round((new Date(rule.startDate).getTime() - new Date(today).getTime()) / 86400000) : 0;
-        const max = rule.endDate ? Math.round((new Date(rule.endDate).getTime() - new Date(today).getTime()) / 86400000) : 7;
+        const min = rule.startDate ? dayDiff(dateKeyOf(rule.startDate), todayKey) : 0;
+        const max = rule.endDate ? dayDiff(dateKeyOf(rule.endDate), todayKey) : 7;
         return daysUntil >= Math.min(min, max) && daysUntil <= Math.max(min, max);
       }
       case "EARLY_BIRD": {
-        const min = rule.startDate ? Math.round((new Date(rule.startDate).getTime() - new Date(today).getTime()) / 86400000) : 0;
-        const max = rule.endDate ? Math.round((new Date(rule.endDate).getTime() - new Date(today).getTime()) / 86400000) : 365;
+        const min = rule.startDate ? dayDiff(dateKeyOf(rule.startDate), todayKey) : 0;
+        const max = rule.endDate ? dayDiff(dateKeyOf(rule.endDate), todayKey) : 365;
         return daysUntil >= Math.min(min, max) && daysUntil <= Math.max(min, max);
       }
       case "LONG_STAY": {
-        const min = rule.startDate ? Math.round((new Date(rule.startDate).getTime() - new Date(today).getTime()) / 86400000) : 2;
-        const max = rule.endDate ? Math.round((new Date(rule.endDate).getTime() - new Date(today).getTime()) / 86400000) : 30;
+        // window values encode nights: UTC day-of-month of startDate/endDate
+        // (e.g. 1970-01-03 => 3 nights). Defaults: 2..30.
+        const min = rule.startDate ? new Date(rule.startDate).getUTCDate() : 2;
+        const max = rule.endDate ? new Date(rule.endDate).getUTCDate() : 30;
         return totalNights >= Math.min(min, max) && totalNights <= Math.max(min, max);
       }
       default:
@@ -126,21 +143,25 @@ export function computeNightlyPrices(input: {
     }
   };
 
-  return addNights(checkIn, totalNights).map((date) => {
-    const key = toDateOnly(date);
+  // iterate night keys anchored at UTC noon to stay TZ-safe
+  const keys = Array.from({ length: totalNights }, (_, i) =>
+    new Date(Date.parse(`${checkInKey}T12:00:00Z`) + i * 86400000).toISOString().slice(0, 10),
+  );
+
+  return keys.map((key) => {
     // nightly = inventory override ?? base price
     let price = inventoryByDate.get(key) ?? null;
     if (price === null || price === undefined) price = basePricePaise;
     const basePrice = price;
     const appliedRules: string[] = [];
     for (const rule of activeRules) {
-      if (!ruleApplies(rule, new Date(`${key}T00:00:00`))) continue;
+      if (!ruleApplies(rule, key)) continue;
       const delta =
         rule.adjustmentType === "PERCENT"
           ? Math.round((basePrice * rule.adjustmentValue) / 100)
           : rule.adjustmentValue;
       price = Math.max(0, price + delta);
-      appliedRules.push(rule.name || rule.type);
+      appliedRules.push(rule.type);
     }
     return { date: key, pricePaise: price * roomsCount, appliedRules };
   });
@@ -184,8 +205,10 @@ export function computeCouponDiscount(
 }
 
 export function gstRateForPerNight(perRoomPerNightPaise: number): number {
+  // GST_SLABS bounds are rupee thresholds (₹0/₹1000/₹7500); input is paise
+  const rupees = Math.round(perRoomPerNightPaise / 100);
   for (const slab of GST_SLABS) {
-    if (perRoomPerNightPaise >= slab.min && (slab.max === null || perRoomPerNightPaise <= slab.max)) {
+    if (rupees >= slab.min && (slab.max === null || rupees <= slab.max)) {
       return slab.rate;
     }
   }
@@ -258,8 +281,10 @@ export async function quoteRoomType(input: {
   if (!roomType || !roomType.isActive) throw new AppError("ROOM_TYPE_NOT_FOUND", 404);
 
   const today = new Date();
-  const checkIn = new Date(input.checkIn);
-  const checkOut = new Date(input.checkOut);
+  // normalize to UTC-midnight instants of the calendar dates so Prisma DATE
+  // range queries don't shift with timezone offsets in the input
+  const checkIn = new Date(`${dateKeyOf(input.checkIn)}T00:00:00Z`);
+  const checkOut = new Date(`${dateKeyOf(input.checkOut)}T00:00:00Z`);
   const nightsCount = assertValidStayParams(checkIn, checkOut, input.roomsCount, today, {
     sameDayCutoffHour: input.sameDayCutoffHour,
     allowSameDay: input.verifyAvailability === false,
@@ -340,6 +365,8 @@ export async function quoteRoomType(input: {
   const breakdown: PriceBreakdown = {
     perNight,
     roomsCount: input.roomsCount,
+    roomSubtotalPaise: roomSubtotal,
+    extraGuestPaise,
     ...fees,
     currency: "INR",
     couponCode: coupon?.code,

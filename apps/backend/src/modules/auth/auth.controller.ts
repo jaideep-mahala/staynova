@@ -9,13 +9,18 @@ import {
   resetPassword,
   logout,
   logoutAll,
+  resendVerification,
+  googleAuth,
+  changePassword,
+  deleteAccount,
 } from "./auth.service";
 import { asyncHandler } from "../../middlewares/error-handler/errorHandler";
+import { passwordSchema } from "@repo/shared";
 
 const signupSchema = z.object({
   name: z.string().min(2),
   email: z.string().email(),
-  password: z.string().min(8),
+  password: passwordSchema,
   phone: z.string().optional(),
   role: z.enum(["USER", "OWNER"]).optional(),
 });
@@ -72,7 +77,30 @@ export const logoutHandler = asyncHandler(async (req: Request, res: Response) =>
 });
 
 export const logoutAllHandler = asyncHandler(async (req: Request, res: Response) => {
-  const userId = (req as any).user?.userId;
+  const userId = req.user!.userId;
   await logoutAll(userId);
   res.json({ success: true, data: { message: "Logged out from all devices" } });
+});
+
+export const googleHandler = asyncHandler(async (req: Request, res: Response) => {
+  const { idToken } = z.object({ idToken: z.string().min(10) }).parse(req.body);
+  const result = await googleAuth(idToken, { userAgent: req.headers["user-agent"], ip: req.ip });
+  res.json({ success: true, data: result });
+});
+
+export const resendVerificationHandler = asyncHandler(async (req: Request, res: Response) => {
+  const { email } = z.object({ email: z.string().email() }).parse(req.body);
+  await resendVerification(email);
+  res.json({ success: true, data: { message: "If account exists and is unverified, a new link was sent" } });
+});
+
+export const changePasswordHandler = asyncHandler(async (req: Request, res: Response) => {
+  const data = z.object({ currentPassword: z.string(), newPassword: passwordSchema }).parse(req.body);
+  await changePassword(req.user!.userId, data.currentPassword, data.newPassword);
+  res.json({ success: true, data: { message: "Password changed; please log in again" } });
+});
+
+export const deleteAccountHandler = asyncHandler(async (req: Request, res: Response) => {
+  await deleteAccount(req.user!.userId);
+  res.json({ success: true, data: { message: "Account deleted" } });
 });

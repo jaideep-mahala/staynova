@@ -76,7 +76,7 @@ export async function requireOwner(req: Request, res: Response, next: NextFuncti
   requireRole("OWNER", "ADMIN")(req, res, next);
 }
 
-export async function audit(actorId: string | null, action: string, entity: string, entityId: string | null, meta?: Record<string, unknown>, ip?: string | null) {
+export async function audit(actorId: string | null, action: string, entity: string, entityId: string | null, meta?: unknown, ip?: string | null) {
   try {
     await prisma.auditLog.create({
       data: {

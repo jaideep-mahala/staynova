@@ -1,30 +1,38 @@
 import { Router, Request, Response } from "express";
 import {
   searchHandler,
+  suggestHandler,
+  featuredHandler,
+  destinationsHandler,
+  amenitiesHandler,
   detailHandler,
+  roomsHandler,
+  reviewsHandler,
   createHandler,
   updateHandler,
   deleteHandler,
   ownerListHandler,
 } from "./property.controller";
+import { requireAuth, requireRole, optionalAuth } from "../../middlewares/auth/requireAuth";
 
 const router: Router = Router();
 
-router.get("/search", searchHandler);
-router.get("/featured", asyncHandlerWrap(async (_req: Request, res: Response) => {
-  res.json({ success: true, data: [] });
-}));
-router.get("/:slug", detailHandler);
-router.post("/", createHandler);
-router.patch("/:id", updateHandler);
-router.delete("/:id", deleteHandler);
-router.get("/owner/list", ownerListHandler);
-router.get("/health", (_req: Request, res: Response) => {
-  res.json({ success: true, data: { module: "properties", status: "active" } });
-});
+// public (static paths before :slug)
+router.get("/search", optionalAuth, searchHandler);
+router.get("/suggest", suggestHandler);
+router.get("/featured", featuredHandler);
+router.get("/destinations/popular", destinationsHandler);
+router.get("/amenities", amenitiesHandler);
+router.get("/owner/list", requireAuth, requireRole("OWNER", "ADMIN"), ownerListHandler);
 
-function asyncHandlerWrap(fn: Function) {
-  return (req: Request, res: Response) => Promise.resolve(fn(req, res)).catch(() => {});
-}
+// owner CRUD (also used by admins)
+router.post("/", requireAuth, requireRole("OWNER", "ADMIN"), createHandler);
+router.patch("/:id", requireAuth, requireRole("OWNER", "ADMIN"), updateHandler);
+router.delete("/:id", requireAuth, requireRole("OWNER", "ADMIN"), deleteHandler);
+
+// public param routes last
+router.get("/:slug/rooms", roomsHandler);
+router.get("/:slug/reviews", reviewsHandler);
+router.get("/:slug", optionalAuth, detailHandler);
 
 export default router;

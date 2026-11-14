@@ -1,16 +1,16 @@
 import { Router, Request, Response } from "express";
 import { asyncHandler } from "../../middlewares/error-handler/errorHandler";
+import { requireAuth } from "../../middlewares/auth/requireAuth";
+import { createReview, myReviews } from "./reviews.service";
 
 const router: Router = Router();
 
-router.post("/:id/review", asyncHandler(async (_req: Request, res: Response) => {
-  res.json({ success: true, data: { message: "review created (placeholder)" } });
+router.get("/me", requireAuth, asyncHandler(async (req: Request, res: Response) => {
+  res.json({ success: true, data: await myReviews(req.user!.userId) });
 }));
-router.get("/:propertyId/reviews", asyncHandler(async (_req: Request, res: Response) => {
-  res.json({ success: true, data: [] });
+
+router.post("/booking/:bookingId", requireAuth, asyncHandler(async (req: Request, res: Response) => {
+  res.status(201).json({ success: true, data: await createReview(req.params.bookingId!, req.user!.userId, req.body) });
 }));
-router.get("/health", (_req: Request, res: Response) => {
-  res.json({ success: true, data: { module: "reviews", status: "active" } });
-});
 
 export default router;

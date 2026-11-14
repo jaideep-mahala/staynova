@@ -149,6 +149,9 @@ model User {
   auditLogs          AuditLog[]
   supportTickets     SupportTicket[]
 
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@index([email])
   @@index([role])
   @@index([status])
@@ -165,6 +168,9 @@ model RefreshToken {
   expiresAt DateTime
   revokedAt DateTime?
 
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@index([userId])
   @@index([expiresAt])
 }
@@ -177,6 +183,9 @@ model PasswordReset {
   expiresAt DateTime
   usedAt    DateTime?
 
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@index([userId])
   @@index([expiresAt])
 }
@@ -188,6 +197,9 @@ model EmailVerification {
   tokenHash String    @unique
   expiresAt DateTime
   usedAt    DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([userId])
   @@index([expiresAt])
@@ -239,6 +251,9 @@ model Property {
   // full-text GIN index hint (applied via migration raw SQL)
   wishlists Wishlist[]
 
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@index([city, status])
   @@index([slug])
   @@index([status])
@@ -273,6 +288,9 @@ model RoomType {
   images       RoomTypeImage[]
   amenityLinks RoomTypeAmenity[]
 
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@index([propertyId])
   @@index([isActive])
 }
@@ -284,6 +302,9 @@ model RoomTypeImage {
   url        String
   sortOrder  Int      @default(0)
 
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@index([roomTypeId])
 }
 
@@ -292,6 +313,9 @@ model RoomTypeAmenity {
   roomType   RoomType @relation(fields: [roomTypeId], references: [id], onDelete: Cascade)
   roomTypeId String   @db.Uuid
   amenity    String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([roomTypeId])
   @@index([amenity])
@@ -312,6 +336,9 @@ model Inventory {
   property      Property? @relation(fields: [propertyId], references: [id])
   propertyId    String?   @db.Uuid
 
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@unique([roomTypeId, date])
   @@index([roomTypeId, date])
   @@index([date])
@@ -330,6 +357,9 @@ model RateRule {
   adjustmentValue Int // paise if FLAT, percent if PERCENT
   priority        Int            @default(0)
   active          Boolean        @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([roomTypeId])
   @@index([type])
@@ -379,6 +409,9 @@ model Booking {
   coupon            Coupon?            @relation(fields: [couponId], references: [id])
   couponRedemptions CouponRedemption[]
 
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@index([userId, status])
   @@index([propertyId, checkIn, checkOut])
   @@index([status])
@@ -396,6 +429,9 @@ model BookingItem {
   pricePerNightSnapshot Json // array of {date, pricePaise}
   subtotalPaise         Int
 
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@index([bookingId])
   @@index([roomTypeId])
 }
@@ -407,6 +443,9 @@ model BookingGuest {
   name      String
   age       Int?
   isPrimary Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([bookingId])
 }
@@ -428,6 +467,9 @@ model Payment {
 
   refunds Refund[]
 
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@index([bookingId])
   @@index([providerOrderId])
   @@index([providerPaymentId])
@@ -444,6 +486,9 @@ model Refund {
   status           RefundStatus @default(PENDING)
   providerRefundId String?      @unique
   reason           String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([paymentId])
   @@index([bookingId])
@@ -471,6 +516,9 @@ model Coupon {
   redemptions CouponRedemption[]
   bookings    Booking[]
 
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@index([code])
   @@index([propertyId])
   @@index([active])
@@ -484,6 +532,9 @@ model CouponRedemption {
   userId    String  @db.Uuid
   booking   Booking @relation(fields: [bookingId], references: [id])
   bookingId String  @db.Uuid
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([couponId, userId, bookingId])
   @@index([couponId])
@@ -508,6 +559,9 @@ model Review {
   ownerReply        String?
   status            ReviewStatus @default(VISIBLE)
 
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@index([propertyId])
   @@index([userId])
   @@index([status])
@@ -520,6 +574,9 @@ model Wishlist {
   userId     String   @db.Uuid
   property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
   propertyId String   @db.Uuid
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([userId, propertyId])
   @@index([userId])
@@ -536,6 +593,9 @@ model Notification {
   data   Json?
   readAt DateTime?
 
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@index([userId])
   @@index([readAt])
 }
@@ -551,6 +611,9 @@ model AuditLog {
   ip         String?
   property   Property? @relation(fields: [propertyId], references: [id])
   propertyId String?   @db.Uuid
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([actorId])
   @@index([entity, entityId])
@@ -579,6 +642,9 @@ model PropertyImage {
   alt        String?
   sortOrder  Int      @default(0)
 
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@index([propertyId])
 }
 
@@ -587,6 +653,9 @@ model PropertyAmenity {
   property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
   propertyId String   @db.Uuid
   amenity    String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([propertyId])
   @@index([amenity])
@@ -597,6 +666,9 @@ model Amenity {
   name String  @unique
   slug String  @unique
   icon String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([slug])
 }

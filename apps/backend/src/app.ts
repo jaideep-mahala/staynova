@@ -3,8 +3,12 @@ import helmet from "helmet";
 import cors from "cors";
 import rateLimit from "express-rate-limit";
 import cookieParser from "cookie-parser";
+import crypto from "crypto";
+import fs from "fs";
+import path from "path";
 import { errorHandler, AppError } from "./middlewares/error-handler/errorHandler";
 import { logger } from "./lib/logger";
+import { ensureUploadDir } from "./lib/storage";
 import authRoutes from "./modules/auth/auth.routes";
 import userRoutes from "./modules/users/users.routes";
 import propertyRoutes from "./modules/properties/properties.routes";
@@ -23,14 +27,13 @@ const app: express.Application = express();
 app.set("trust proxy", 1);
 
 app.use((req: express.Request, _res: express.Response, next: express.NextFunction) => {
-  req.headers["x-correlation-id"] = req.headers["x-correlation-id"] || require("crypto").randomUUID();
+  req.headers["x-correlation-id"] = req.headers["x-correlation-id"] || crypto.randomUUID();
+  logger.info({ method: req.method, url: req.url, ip: req.ip, cid: req.headers["x-correlation-id"] });
   next();
 });
 
-app.use((req: express.Request, _res: express.Response, next: express.NextFunction) => {
-  logger.info({ method: req.method, url: req.url, ip: req.ip });
-  next();
-});
+// webhook raw bodies MUST be parsed before the JSON parser
+app.use("/api/v1/payments/webhooks", express.raw({ type: "*/*", limit: "1mb" }));
 
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
@@ -81,8 +84,31 @@ app.use(`${API_PREFIX}/notifications`, notificationRoutes);
 app.use(`${API_PREFIX}/owner`, ownerRoutes);
 app.use(`${API_PREFIX}/admin`, adminRoutes);
 
-app.use(`${API_PREFIX}/webhooks/razorpay`, express.raw({ type: "*/*" }));
-app.use(`${API_PREFIX}/webhooks/stripe`, express.raw({ type: "*/*" }));
+// local uploaded files (dev storage) — voucher PDFs etc.
+const uploadDir = ensureUploadDir();
+app.use("/static", express.static(uploadDir));
+
+// OpenAPI docs (spec §6) — served spec JSON + a docs landing page
+app.get("/api/docs", (_req, res) => {
+  res.type("text/html").send(`<!doctype html><html><head><title>StayNova API docs</title></head>
+<body style="font-family:sans-serif;max-width:720px;margin:60px auto;">
+<h1>StayNova API</h1><p>OpenAPI 3 spec: <a href="/api/docs.json">/api/docs.json</a></p>
+<p>Interactive docs: open the JSON in <a href="https://editor.swagger.io/" target="_blank">Swagger Editor</a> or Redoc.</p>
+</body></html>`);
+});
+
+app.get("/api/docs.json", (_req, res) => {
+  const p = path.resolve(process.cwd(), "src/openapi.json");
+  if (fs.existsSync(p)) {
+    res.json(JSON.parse(fs.readFileSync(p, "utf8")));
+  } else {
+    res.json({
+      openapi: "3.0.0",
+      info: { title: "StayNova API", version: "1.0.0" },
+      paths: {},
+    });
+  }
+});
 
 app.use((_req: express.Request, _res: express.Response, next: express.NextFunction) => {
   next(new AppError("NOT_FOUND", 404));

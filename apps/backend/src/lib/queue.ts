@@ -16,7 +16,7 @@ export function getQueueConnection(): IORedis {
 
 export const QUEUES = {
   booking: "staynova-bookings",
-  daily: "staynova-daily",
+  jobs: "staynova-jobs",
 } as const;
 
 const queues = new Map<string, Queue>();
@@ -77,5 +77,5 @@ export function startWorkers(
 }
 
 export async function scheduleCron(queue: string, jobName: string, data: Record<string, unknown>, everyMs: number) {
-  await getQueue(queue).add(jobName, data, { repeat: { every: everyMs }, removeOnComplete: 50 });
+  await getQueue(queue).add(jobName, data, { repeat: { every: everyMs }, removeOnComplete: 50 } as never);
 }

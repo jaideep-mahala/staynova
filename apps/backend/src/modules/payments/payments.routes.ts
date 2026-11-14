@@ -1,26 +1,46 @@
 import { Router, Request, Response } from "express";
-import { asyncHandler } from "../../middlewares/error-handler/errorHandler";
-import { createPaymentOrder, verifyPayment, handleRazorpayWebhook } from "./payment.service";
+import { asyncHandler, AppError } from "../../middlewares/error-handler/errorHandler";
+import { requireAuth } from "../../middlewares/auth/requireAuth";
+import { createPaymentOrder, verifyPayment, handleRazorpayWebhook, handleStripeWebhook, verifyRazorpayWebhookSignature } from "./payment.service";
 
 const router: Router = Router();
 
-router.post("/create-order", asyncHandler(async (req: Request, res: Response) => {
-  const userId = (req as any).user?.userId;
-  const result = await createPaymentOrder(req.body, userId);
-  res.json({ success: true, data: result });
-}));
-router.post("/verify", asyncHandler(async (req: Request, res: Response) => {
-  const userId = (req as any).user?.userId;
-  const result = await verifyPayment(req.body, userId);
-  res.json({ success: true, data: result });
-}));
+// raw body was parsed by express.raw in app.ts (mounted before express.json)
 router.post("/webhooks/razorpay", asyncHandler(async (req: Request, res: Response) => {
   const signature = req.headers["x-razorpay-signature"] as string;
-  await handleRazorpayWebhook(req.body, signature);
+  const raw = Buffer.isBuffer(req.body) ? req.body : Buffer.from(JSON.stringify(req.body || {}));
+  if (!verifyRazorpayWebhookSignature(raw, signature || "")) {
+    throw new AppError("INVALID_WEBHOOK_SIGNATURE", 401);
+  }
+  const payload = JSON.parse(raw.toString("utf8"));
+  await handleRazorpayWebhook(payload);
   res.json({ success: true });
 }));
-router.get("/health", (_req: Request, res: Response) => {
-  res.json({ success: true, data: { module: "payments", status: "active" } });
-});
+
+// Stripe: signature verified by SDK against raw body
+router.post("/webhooks/stripe", asyncHandler(async (req: Request, res: Response) => {
+  const signature = req.headers["stripe-signature"] as string;
+  const raw = Buffer.isBuffer(req.body) ? req.body : Buffer.from(JSON.stringify(req.body || {}));
+  const secret = process.env.STRIPE_WEBHOOK_SECRET;
+  let event: unknown;
+  if (process.env.STRIPE_SECRET_KEY && secret) {
+    const Stripe = (await import("stripe")).default;
+    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+    event = stripe.webhooks.constructEvent(raw, signature || "", secret);
+  } else {
+    // demo mode (no keys configured): accept unsigned payloads
+    event = JSON.parse(raw.toString("utf8"));
+  }
+  await handleStripeWebhook(event);
+  res.json({ success: true });
+}));
+
+router.post("/create-order", requireAuth, asyncHandler(async (req: Request, res: Response) => {
+  res.json({ success: true, data: await createPaymentOrder(req.body, req.user!.userId) });
+}));
+
+router.post("/verify", requireAuth, asyncHandler(async (req: Request, res: Response) => {
+  res.json({ success: true, data: await verifyPayment(req.body, req.user!.userId) });
+}));
 
 export default router;

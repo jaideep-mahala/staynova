@@ -150,7 +150,7 @@ export async function verifyPayment(
   data: { razorpayOrderId: string; razorpayPaymentId: string; razorpaySignature: string },
   userId: string
 ) {
-  const payment = await prisma.payment.findUnique({
+  const payment = await prisma.payment.findFirst({
     where: { providerOrderId: data.razorpayOrderId },
     include: { booking: true },
   });
@@ -223,7 +223,7 @@ export async function handleRazorpayWebhook(payload: any) {
   // find payment by order id (preferred) then payment id
   let payment =
     (paymentEntity.order_id &&
-      (await prisma.payment.findUnique({ where: { providerOrderId: paymentEntity.order_id }, include: { booking: true } }))) ||
+      (await prisma.payment.findFirst({ where: { providerOrderId: paymentEntity.order_id }, include: { booking: true } }))) ||
     (paymentEntity.id &&
       (await prisma.payment.findFirst({ where: { providerPaymentId: paymentEntity.id }, include: { booking: true } }))) ||
     null;

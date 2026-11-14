@@ -1,4 +1,4 @@
-import { Router, Request, Response } from "express";
+import { Router } from "express";
 import {
   signupHandler,
   loginHandler,
@@ -8,20 +8,27 @@ import {
   resetPasswordHandler,
   logoutHandler,
   logoutAllHandler,
+  googleHandler,
+  resendVerificationHandler,
+  changePasswordHandler,
+  deleteAccountHandler,
 } from "./auth.controller";
+import { requireAuth } from "../../middlewares/auth/requireAuth";
+import { authLimiter, loginLimiter } from "../../middlewares/rate-limit/rateLimiters";
 
 const router: Router = Router();
 
-router.post("/signup", signupHandler);
-router.post("/login", loginHandler);
+router.post("/signup", authLimiter, signupHandler);
+router.post("/login", loginLimiter, loginHandler);
+router.post("/google", authLimiter, googleHandler);
 router.post("/refresh", refreshHandler);
-router.get("/verify-email", verifyEmailHandler);
-router.post("/forgot-password", forgotPasswordHandler);
-router.post("/reset-password", resetPasswordHandler);
+router.post("/verify-email", verifyEmailHandler);
+router.post("/resend-verification", authLimiter, resendVerificationHandler);
+router.post("/forgot-password", authLimiter, forgotPasswordHandler);
+router.post("/reset-password", authLimiter, resetPasswordHandler);
 router.post("/logout", logoutHandler);
-router.post("/logout-all", logoutAllHandler);
-router.get("/health", (_req: Request, res: Response) => {
-  res.json({ success: true, data: { module: "auth", status: "active" } });
-});
+router.post("/logout-all", requireAuth, logoutAllHandler);
+router.post("/change-password", requireAuth, changePasswordHandler);
+router.delete("/account", requireAuth, deleteAccountHandler);
 
 export default router;
